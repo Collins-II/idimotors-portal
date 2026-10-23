@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { ArrowUpRight, Bell, CalendarDays, CarFront, ChartNoAxesCombined, ChevronRight, CircleHelp, Command, Globe, LayoutDashboard, LogOut, Menu, MessagesSquare, RefreshCw, Search, Settings2, Users, UsersRound, Wallet, X } from "lucide-react";
+import { ArrowUpRight, Bell, CalendarDays, CarFront, ChartNoAxesCombined, ChevronRight, CircleHelp, Command, Globe, LayoutDashboard, LogOut, Menu, MessagesSquare, RefreshCw, Repeat2, Search, Settings2, Users, UsersRound, Wallet, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { CURRENCIES, initials, vehicleTitle, type Currency } from "@/lib/domain";
 import { LANGUAGES, usePreferences, type Language, type MessageKey } from "@/lib/client/preferences";
@@ -14,6 +14,7 @@ const navigation: { key: MessageKey; href: string; icon: typeof LayoutDashboard 
   { key: "nav.overview", href: "/", icon: LayoutDashboard },
   { key: "nav.messages", href: "/messages", icon: MessagesSquare },
   { key: "nav.inventory", href: "/admin/inventory", icon: CarFront },
+  { key: "nav.tradeIns", href: "/admin/trade-ins", icon: Repeat2 },
   { key: "nav.leads", href: "/admin/leads", icon: UsersRound },
   { key: "nav.sales", href: "/admin/sales", icon: Wallet },
   { key: "nav.appointments", href: "/admin/appointments", icon: CalendarDays },
@@ -98,8 +99,8 @@ function Workspace({ children }: { children: React.ReactNode }) {
   ].slice(0, 7) : [];
   const requested = data.appointments.filter((a) => a.status === "Requested").length;
   const newLeads = data.leads.filter((l) => l.stage === "New").length;
-  const pending = data.unreadMessages + requested;
-  const badges: Record<string, number> = { "/messages": data.unreadMessages, "/admin/leads": newLeads, "/admin/appointments": requested };
+  const pending = data.unreadMessages + requested + data.newTradeIns;
+  const badges: Record<string, number> = { "/messages": data.unreadMessages, "/admin/trade-ins": data.newTradeIns, "/admin/leads": newLeads, "/admin/appointments": requested };
 
   return (
     <div className="dealer-app">
@@ -137,7 +138,8 @@ function Workspace({ children }: { children: React.ReactNode }) {
               {notifications && <div className="notification-panel">
                 <div className="panel-heading"><strong>{t("common.updates")}</strong><button className="icon-button" aria-label="Close notifications" onClick={() => setNotifications(false)}><X size={16} /></button></div>
                 <p>{data.unreadMessages} unread customer {data.unreadMessages === 1 ? "message" : "messages"}.</p><Link href="/messages" onClick={() => setNotifications(false)}>Open inbox <ArrowUpRight size={14} /></Link>
-                <p>{requested} test-drive {requested === 1 ? "request needs" : "requests need"} confirmation.</p><Link href="/admin/appointments" onClick={() => setNotifications(false)}>View appointments <ArrowUpRight size={14} /></Link>
+                                <p>{data.newTradeIns} new sell / swap {data.newTradeIns === 1 ? "request" : "requests"} to review.</p><Link href="/admin/trade-ins" onClick={() => setNotifications(false)}>Review trade-ins <ArrowUpRight size={14} /></Link>
+                                <p>{requested} test-drive {requested === 1 ? "request needs" : "requests need"} confirmation.</p><Link href="/admin/appointments" onClick={() => setNotifications(false)}>View appointments <ArrowUpRight size={14} /></Link>
                 <p>{newLeads} new {newLeads === 1 ? "lead is" : "leads are"} ready for a follow-up.</p><Link href="/admin/leads" onClick={() => setNotifications(false)}>Open lead pipeline <ArrowUpRight size={14} /></Link>
               </div>}
             </div>

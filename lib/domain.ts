@@ -11,6 +11,10 @@ export const APPOINTMENT_STATUSES = ["Requested", "Scheduled", "Completed", "Can
 export const PAYMENT_METHODS = ["Cash", "Finance", "Bank transfer", "Mobile money"] as const;
 export const ROLES = ["admin", "staff"] as const;
 export const CURRENCIES = ["ZMW", "USD", "EUR", "GBP", "ZAR"] as const;
+export const TRADE_IN_TYPES = ["Sell", "Swap"] as const;
+export const TRADE_IN_STATUSES = ["New", "Reviewing", "Offer made", "Accepted", "Declined", "Completed"] as const;
+export const VEHICLE_CONDITIONS = ["Excellent", "Good", "Fair", "Needs work"] as const;
+export const MAX_VEHICLE_IMAGES = 12;
 
 export type Currency = (typeof CURRENCIES)[number];
 export type Role = (typeof ROLES)[number];
@@ -36,7 +40,7 @@ export const vehicleInput = z.object({
   stock: trimmed(1, 30),
   description: z.string().trim().max(3000).default(""),
   badge: z.string().trim().max(30).default(""),
-  images: z.array(imageUrl).max(12).default([]),
+  images: z.array(imageUrl).max(MAX_VEHICLE_IMAGES).default([]),
   featured: z.boolean().default(false),
   published: z.boolean().default(true),
 });
@@ -124,6 +128,51 @@ export const publicAppointmentInput = z.object({
   website: z.string().max(0).optional(),
 });
 
+/** Photos submitted by the public must have been uploaded through our own Cloudinary account. */
+const uploadedImage = z.string().trim().max(500).refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "res.cloudinary.com";
+  } catch {
+    return false;
+  }
+}, "Photos must be uploaded through the form");
+
+export const publicTradeInInput = z.object({
+  type: z.enum(TRADE_IN_TYPES),
+  name: trimmed(2, 100),
+  email: email,
+  phone: trimmed(6, 30).regex(/^[+\d\s()-]*$/, "Enter a valid phone number"),
+  make: trimmed(1, 60),
+  model: trimmed(1, 80),
+  year: z.coerce.number().int().min(1950).max(new Date().getFullYear() + 1),
+  mileage: z.coerce.number().int().nonnegative().max(2_000_000),
+  fuel: z.enum(FUELS),
+  transmission: z.enum(TRANSMISSIONS),
+  body: z.enum(BODIES),
+  color: z.string().trim().max(40).default(""),
+  condition: z.enum(VEHICLE_CONDITIONS),
+  askingPrice: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
+  targetVehicleSlug: z.string().trim().max(120).default(""),
+  notes: z.string().trim().max(2000).default(""),
+  images: z.array(uploadedImage).min(1, "Add at least one photo of your car").max(MAX_VEHICLE_IMAGES),
+  website: z.string().max(0).optional(),
+});
+
+export const tradeInUpdateInput = z.object({
+  status: z.enum(TRADE_IN_STATUSES).optional(),
+  offer: z.coerce.number().nonnegative().max(1_000_000_000).optional(),
+  staffNotes: z.string().trim().max(3000).optional(),
+});
+
+export type TradeIn = {
+  id: string; type: (typeof TRADE_IN_TYPES)[number]; status: (typeof TRADE_IN_STATUSES)[number];
+  name: string; email: string; phone: string;
+  make: string; model: string; year: number; mileage: number; fuel: string; transmission: string; body: string; color: string;
+  condition: string; askingPrice: number; offer: number; targetVehicleId: string; notes: string; staffNotes: string; images: string[];
+  conversationId: string; leadId: string; vehicleId: string; created: string;
+};
+
 export type Vehicle = Omit<z.infer<typeof vehicleInput>, "status"> & { id: string; slug: string; status: (typeof VEHICLE_STATUSES)[number]; added: string };
 export type Lead = z.infer<typeof leadInput> & { id: string; stage: (typeof LEAD_STAGES)[number]; created: string; conversationId?: string };
 export type Appointment = z.infer<typeof appointmentInput> & { id: string; status: (typeof APPOINTMENT_STATUSES)[number]; source: "portal" | "website" };
@@ -139,6 +188,7 @@ export type AuditEntry = { id: string; actor: string; action: string; summary: s
 export type WorkspaceData = {
   vehicles: Vehicle[]; leads: Lead[]; appointments: Appointment[]; sales: Sale[]; settings: Settings;
   unreadMessages: number;
+  newTradeIns: number;
   me: { id: string; name: string; email: string; role: Role };
 };
 

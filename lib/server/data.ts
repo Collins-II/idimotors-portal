@@ -3,7 +3,7 @@ import slugify from "slugify";
 import type { Types } from "mongoose";
 import { connectToDatabase } from "@/lib/database";
 import { AuditModel, SettingsModel, VehicleModel } from "@/lib/database/models";
-import { DEFAULT_SETTINGS, type Appointment, type Lead, type Message, type Sale, type Settings, type Vehicle } from "@/lib/domain";
+import { DEFAULT_SETTINGS, type Appointment, type Lead, type Message, type Sale, type Settings, type TradeIn, type Vehicle } from "@/lib/domain";
 import type { StaffSession } from "@/lib/server/auth";
 
 type WithId = { _id: Types.ObjectId | string };
@@ -38,6 +38,16 @@ export function toSale(doc: WithId & Record<string, any>): Sale {
 
 export function toMessage(doc: WithId & Record<string, any>): Message {
   return { id: id(doc), sender: doc.sender, authorName: doc.authorName, body: doc.body, createdAt: new Date(doc.createdAt).toISOString(), delivery: doc.delivery ?? undefined };
+}
+
+export function toTradeIn(doc: WithId & Record<string, any>): TradeIn {
+  return {
+    id: id(doc), type: doc.type, status: doc.status, name: doc.name, email: doc.email, phone: doc.phone ?? "",
+    make: doc.make, model: doc.model, year: doc.year, mileage: doc.mileage, fuel: doc.fuel, transmission: doc.transmission, body: doc.body,
+    color: doc.color ?? "", condition: doc.condition, askingPrice: doc.askingPrice ?? 0, offer: doc.offer ?? 0, targetVehicleId: doc.targetVehicleId ?? "",
+    notes: doc.notes ?? "", staffNotes: doc.staffNotes ?? "", images: doc.images ?? [], conversationId: doc.conversationId ?? "",
+    leadId: doc.leadId ?? "", vehicleId: doc.vehicleId ?? "", created: doc.created,
+  };
 }
 
 /** Public-facing vehicle shape for the customer website (no internal fields). */

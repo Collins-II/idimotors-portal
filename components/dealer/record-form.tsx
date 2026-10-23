@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { ImagePlus, Link2, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, Link2, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { APPOINTMENT_TYPES, BODIES, FUELS, LEAD_SOURCES, PAYMENT_METHODS, TRANSMISSIONS, localDate, vehicleTitle, type Appointment, type Lead, type Vehicle, type WorkspaceData } from "@/lib/domain";
+import { APPOINTMENT_TYPES, BODIES, FUELS, LEAD_SOURCES, MAX_VEHICLE_IMAGES, PAYMENT_METHODS, TRANSMISSIONS, localDate, vehicleTitle, type Appointment, type Lead, type Vehicle, type WorkspaceData } from "@/lib/domain";
 import { api, errorMessage } from "@/lib/client/api";
+import { mapWithConcurrency, prepareImage } from "@/lib/client/image-upload";
 import { isOptimizedImage } from "@/lib/images";
 import { mutate } from "@/lib/client/workspace";
 
@@ -29,28 +30,48 @@ export function Field({ label, name, value, type = "text", required = true, min,
 }
 
 const options = (values: readonly string[]) => values.map((v) => <option key={v} value={v}>{v}</option>);
-const MAX_IMAGES = 12;
+const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
-function ImageManager({ images, setImages, onError }: { images: string[]; setImages: (images: string[]) => void; onError: (message: string) => void }) {
-  const [uploading, setUploading] = useState(false);
+function ImageManager({ images, setImages, onError }: { images: string[]; setImages: React.Dispatch<React.SetStateAction<string[]>>; onError: (message: string) => void }) {
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [url, setUrl] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const uploading = progress !== null;
 
-  async function upload(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
+  async function upload(list: FileList | File[] | null) {
+    const all = Array.from(list ?? []);
+    if (!all.length || uploading) return;
+    const files = all.filter((file) => ACCEPTED.includes(file.type));
+    const room = MAX_VEHICLE_IMAGES - images.length;
+    const queue = files.slice(0, room);
+    const problems: string[] = [];
+    if (files.length < all.length) problems.push(`${all.length - files.length} file(s) skipped: only JPEG, PNG, WebP or AVIF images are allowed.`);
+    if (files.length > room) problems.push(`Only ${MAX_VEHICLE_IMAGES} photos are allowed per vehicle; ${files.length - room} were not added.`);
+    if (!queue.length) {
+      onError(problems.join(" ") || "No photos were added.");
+      return;
+    }
+    setProgress({ done: 0, total: queue.length });
     try {
-      const added: string[] = [];
-      for (const file of Array.from(files).slice(0, MAX_IMAGES - images.length)) {
+      const results = await mapWithConcurrency(queue, 3, async (file) => {
         const form = new FormData();
-        form.append("file", file);
-        added.push((await api<{ url: string }>("/api/upload", { form })).url);
+        form.append("file", await prepareImage(file));
+        const { url: uploaded } = await api<{ url: string }>("/api/upload", { form });
+        setProgress((current) => current && { ...current, done: current.done + 1 });
+        return uploaded;
+      });
+      const added = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+      const failed = results.length - added.length;
+      if (added.length) setImages((current) => [...current, ...added].slice(0, MAX_VEHICLE_IMAGES));
+      if (failed) {
+        const reason = results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+        problems.push(`${failed} of ${queue.length} photo(s) failed to upload: ${errorMessage(reason)}`);
       }
-      setImages([...images, ...added]);
-    } catch (error) {
-      onError(errorMessage(error));
+      if (problems.length) onError(problems.join(" "));
     } finally {
-      setUploading(false);
+      setProgress(null);
       if (input.current) input.current.value = "";
     }
   }
@@ -58,31 +79,59 @@ function ImageManager({ images, setImages, onError }: { images: string[]; setIma
   function addUrl() {
     const value = url.trim();
     if (!/^https:\/\/\S+$/.test(value)) return onError("Image links must start with https://");
-    setImages([...images, value]);
+    if (images.length >= MAX_VEHICLE_IMAGES) return onError(`Only ${MAX_VEHICLE_IMAGES} photos are allowed per vehicle.`);
+    setImages((current) => [...current, value]);
     setUrl("");
   }
 
+  function move(from: number, to: number) {
+    if (to < 0 || to >= images.length || from === to) return;
+    setImages((current) => {
+      const next = [...current];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  }
+
   return (
-    <div className="full-width image-manager">
-      <span className="image-manager-label">Photos <small>The first photo is used as the cover image on the website.</small></span>
+    <div
+      className={`full-width image-manager ${dragging ? "is-dragging" : ""}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
+      onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDragging(false); void upload(e.dataTransfer.files); } }}
+    >
+      <span className="image-manager-label">Photos ({images.length}/{MAX_VEHICLE_IMAGES}) <small>Select or drop several photos at once. Drag thumbnails to reorder; the first photo is the cover on the website.</small></span>
       <div className="image-strip">
         {images.map((src, index) => (
-          <div key={`${src}-${index}`} className="image-thumb">
-            <Image src={src} alt={`Vehicle photo ${index + 1}`} fill sizes="120px" unoptimized={!isOptimizedImage(src)} />
+          <div
+            key={`${src}-${index}`}
+            className={`image-thumb ${dragIndex === index ? "is-moving" : ""}`}
+            draggable
+            onDragStart={(e) => { setDragIndex(index); e.dataTransfer.effectAllowed = "move"; }}
+            onDragOver={(e) => { if (dragIndex !== null) e.preventDefault(); }}
+            onDrop={(e) => { if (dragIndex !== null) { e.preventDefault(); e.stopPropagation(); move(dragIndex, index); setDragIndex(null); } }}
+            onDragEnd={() => setDragIndex(null)}
+          >
+            <Image src={src} alt={`Vehicle photo ${index + 1}`} fill sizes="120px" unoptimized={!isOptimizedImage(src)} draggable={false} />
             {index === 0 && <span className="cover-tag">Cover</span>}
             <div className="thumb-actions">
-              {index > 0 && <button type="button" onClick={() => setImages([src, ...images.filter((_, i) => i !== index)])}>Make cover</button>}
-              <button type="button" aria-label="Remove photo" onClick={() => setImages(images.filter((_, i) => i !== index))}><Trash2 size={13} /></button>
+              <span style={{ display: "flex", gap: 3 }}>
+                {index > 0 && <button type="button" aria-label="Move photo left" title="Move left" onClick={() => move(index, index - 1)}><ChevronLeft size={13} /></button>}
+                {index < images.length - 1 && <button type="button" aria-label="Move photo right" title="Move right" onClick={() => move(index, index + 1)}><ChevronRight size={13} /></button>}
+                {index > 0 && <button type="button" onClick={() => move(index, 0)}>Cover</button>}
+              </span>
+              <button type="button" aria-label="Remove photo" onClick={() => setImages((current) => current.filter((_, i) => i !== index))}><Trash2 size={13} /></button>
             </div>
           </div>
         ))}
-        {images.length < MAX_IMAGES && (
+        {images.length < MAX_VEHICLE_IMAGES && (
           <button type="button" className="image-add" disabled={uploading} onClick={() => input.current?.click()}>
-            {uploading ? <Loader2 size={20} className="spin" /> : <ImagePlus size={20} />}<span>{uploading ? "Uploading…" : "Upload"}</span>
+            {uploading ? <Loader2 size={20} className="spin" /> : <ImagePlus size={20} />}<span>{progress ? `Uploading ${progress.done}/${progress.total}` : "Add photos"}</span>
           </button>
         )}
       </div>
-      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple hidden onChange={(e) => void upload(e.target.files)} />
+      <input ref={input} type="file" accept={ACCEPTED.join(",")} multiple hidden onChange={(e) => void upload(e.target.files)} />
       <div className="image-url-row">
         <Link2 size={15} />
         <input aria-label="Image URL" placeholder="…or paste an https:// image link" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addUrl(); } }} />

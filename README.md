@@ -73,6 +73,8 @@ Allowed origins come from `CLIENT_ORIGINS`.
 | POST | `/api/public/enquiries` | `{ name, email, phone?, message, vehicleSlug? }`. Creates a lead and a conversation, emails the customer a private thread link, and alerts staff. |
 | POST | `/api/public/appointments` | `{ name, email, phone?, vehicleSlug?, date: YYYY-MM-DD, time: HH:MM, type, notes? }`. Creates a **Requested** appointment for staff to confirm. |
 | GET / POST | `/api/public/conversations/:token` | Reads the thread, or posts `{ body }` as the customer |
+| POST | `/api/public/uploads` | Multipart `file` (JPG/PNG/WebP/AVIF, up to 8 MB). Uploads a customer photo to `${CLOUDINARY_FOLDER}/trade-ins` and returns `{ url }`. |
+| POST | `/api/public/trade-ins` | `{ type: "Sell" \| "Swap", name, email, phone, make, model, year, mileage, fuel, transmission, body, color?, condition, askingPrice?, targetVehicleSlug?, notes?, images[1–12] }`. Creates a trade-in request plus a lead and conversation, and returns `{ token, threadUrl }`. |
 
 The forms include a `website` honeypot field. Public endpoints are rate-limited per IP.
 
@@ -87,7 +89,11 @@ The forms include a `website` honeypot field. Public endpoints are rate-limited 
   - `/api/conversations`
   - `/api/conversations/:id`: opening a conversation marks it read; a PATCH sets `{ status }`.
   - `/api/conversations/:id/messages`: POST a reply.
-- `POST /api/upload`: multipart `file`, JPG/PNG/WebP up to 8 MB.
+- `POST /api/upload`: multipart `file`, JPG/PNG/WebP/AVIF up to 8 MB. Vehicles take up to 12 photos; the admin uploads several in parallel and resizes them in the browser.
+- Trade-ins (sell to us / swap & top-up):
+  - `GET /api/trade-ins`
+  - `PATCH /api/trade-ins/:id` with `{ status?, offer?, staffNotes? }`. Use DELETE (admin only) to remove a request.
+  - `POST /api/trade-ins/:id/inventory`: once a request is Accepted, creates an unpublished vehicle with its photos.
 - `POST /api/account/password` changes your own password.
 - Admin only:
   - `/api/settings`, plus `POST /api/settings/rates` to refresh live rates.

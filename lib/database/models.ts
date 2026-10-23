@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { APPOINTMENT_STATUSES, APPOINTMENT_TYPES, BODIES, CURRENCIES, FUELS, LEAD_SOURCES, LEAD_STAGES, PAYMENT_METHODS, ROLES, TRANSMISSIONS, VEHICLE_STATUSES } from "@/lib/domain";
+import { APPOINTMENT_STATUSES, APPOINTMENT_TYPES, BODIES, CURRENCIES, FUELS, LEAD_SOURCES, LEAD_STAGES, PAYMENT_METHODS, ROLES, TRADE_IN_STATUSES, TRADE_IN_TYPES, TRANSMISSIONS, VEHICLE_CONDITIONS, VEHICLE_STATUSES } from "@/lib/domain";
 
 function model<S extends Schema<any, any, any, any, any, any, any, any, any>>(name: string, schema: S): Model<InferSchemaType<S>> {
   return (mongoose.models[name] as Model<InferSchemaType<S>>) ?? mongoose.model<InferSchemaType<S>>(name, schema);
@@ -109,6 +109,34 @@ const messageSchema = new Schema({
   delivery: { email: String, sms: String },
 }, { timestamps: true });
 
+const tradeInSchema = new Schema({
+  type: { type: String, enum: TRADE_IN_TYPES, required: true, index: true },
+  status: { type: String, enum: TRADE_IN_STATUSES, default: "New", index: true },
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, lowercase: true, trim: true },
+  phone: { type: String, default: "" },
+  make: { type: String, required: true, trim: true },
+  model: { type: String, required: true, trim: true },
+  year: { type: Number, required: true },
+  mileage: { type: Number, required: true, min: 0 },
+  fuel: { type: String, enum: FUELS, required: true },
+  transmission: { type: String, enum: TRANSMISSIONS, required: true },
+  body: { type: String, enum: BODIES, required: true },
+  color: { type: String, default: "" },
+  condition: { type: String, enum: VEHICLE_CONDITIONS, required: true },
+  askingPrice: { type: Number, default: 0, min: 0 },
+  offer: { type: Number, default: 0, min: 0 },
+  targetVehicleId: { type: String, default: "" },
+  notes: { type: String, default: "" },
+  staffNotes: { type: String, default: "" },
+  images: { type: [String], default: [] },
+  conversationId: { type: String, default: "" },
+  leadId: { type: String, default: "" },
+  vehicleId: { type: String, default: "" },
+  created: { type: String, required: true },
+}, { timestamps: true });
+tradeInSchema.index({ createdAt: -1 });
+
 const auditSchema = new Schema({
   actorId: String,
   actor: String,
@@ -136,4 +164,5 @@ export const SaleModel = model("Sale", saleSchema);
 export const SettingsModel = model("Settings", settingsSchema);
 export const ConversationModel = model("Conversation", conversationSchema);
 export const MessageModel = model("Message", messageSchema);
+export const TradeInModel = model("TradeIn", tradeInSchema);
 export const AuditModel = model("AuditLog", auditSchema);
